@@ -35,3 +35,58 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+.terraform/
+# Ignore Terraform state and backup files
+*.tfstate
+*.tfstate.backup
+terraform.tfstate.d/
+
+# Ignore provider-specific files
+.terraform/
+.terraform.lock.hcl
+
+# Ignore sensitive variable files
+terraform.tfvars
+*.tfvars.json
+credentials.json
+
+# Ignore logs and debug output
+*.log
+crash.log
+
+# Ignore temporary or IDE-specific files
+*.bak
+*.swp
+.vscode/
+.idea/
+.DS_Store
+
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.env
+*.env.*
+vars.yml
+*vars.yaml
+*.tfplan
+*.tfplan.*
+# Ignore secrets and credentials
+*.vault
+*.key
+*.pem
+secrets.yml
+
+# Ignore logs and debug output
+*.log
+*.retry
+
+# Ignore temporary files
+*.swp
+*.bak
+*.tmp
+
+# Ignore SSH keys and authentication files
+id_rsa*
+id_ed25519*
+settings.json

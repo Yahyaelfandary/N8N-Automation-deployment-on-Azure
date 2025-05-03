@@ -1,0 +1,152 @@
+- name: Install and upgrade packages on Ubuntu servers
+  hosts: "Servers"
+  become: true
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+
+    - name: Install packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - git
+        - net-tools
+        - ufw
+        - docker.io
+        - nginx
+        - certbot
+        - python3-certbot-nginx
+
+- name: Configure docker n8n container
+  hosts: "Servers"
+  become: yes
+  vars_files:
+    - /mnt/hgfs/development_folder/Playbooks/vars.yml    # Path to your vars.yml file, replace with your actual path
+  tasks:
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create n8n container
+      community.docker.docker_container:
+        name: n8n
+        image: docker.n8n.io/n8nio/n8n:latest
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - "5678:5678"
+  
+        env:
+          DB_TYPE: sqlite
+          DB_SQLITE_FILE: /root/.n8n/database.sqlite
+          n8n_HOST: "https://{{ nginx_domain }}"
+          webhookUrl: "https://{{ nginx_domain }}/webhook/"
+          webhooktunnelUrl: "https://{{ nginx_domain }}/webhook/"
+          n8n_secure_cookie: "true"
+
+        volumes:
+          - /root/.n8n:/root/.n8n
+
+- name: Setup Nginx Reverse Proxy for n8n
+  hosts: all
+  become: yes
+  vars_files:
+    - /mnt/hgfs/development_folder/Playbooks/vars.yml   # Path to your vars.yml file, replace with your actual path
+  tasks:
+    - name: Deploy n8n Nginx config
+      template:
+        src: /mnt/hgfs/development_folder/templates/nginx_n8n.j2   # Path to your Jinja2 template, replace with your actual path
+        dest: /etc/nginx/sites-available/n8n
+      notify: Restart nginx
+
+    - name: Enable Nginx site configuration
+      file:
+        src: /etc/nginx/sites-available/n8n
+        dest: /etc/nginx/sites-enabled/n8n
+        state: link
+      notify: Restart nginx
+
+    - name: Allow Nginx traffic in firewall
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+- name: Configure Certbot SSL for Nginx
+  hosts: all
+  become: yes
+  vars_files:
+    - /mnt/hgfs/development_folder/Playbooks/vars.yml   # Path to your vars.yml file, replace with your actual path
+  tasks:
+    - name: Obtain SSL certificate with Certbot
+      command: certbot --nginx -d "{{ nginx_domain }}" --non-interactive --agree-tos --email "{{ ssl_email }}"
+      register: certbot_result
+
+    - name: Set up SSL auto-renewal
+      cron:
+        name: "Certbot Auto-renew"
+        job: "certbot renew --quiet"
+        minute: 0
+        hour: 3
+
+  handlers:
+    - name: Reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+- name: Configure UFW firewall
+  hosts: "Servers"
+  become: true
+  tasks:
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: 22
+        proto: tcp
+
+    - name: Allow n8n port
+      ufw:
+        rule: deny
+        port: 5678
+        proto: tcp
+
+    - name: Allow n8n port
+      ufw:
+        rule: deny
+        port: 80
+        proto: tcp
+
+    - name: Allow HTTPS
+      ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+        policy: deny
+
+    - name: Show UFW status after configuration
+      command: sudo ufw status
+      register: ufw_output
+
+    - name: Display UFW status
+      debug:
+        msg: "{{ ufw_output.stdout_lines }}"
